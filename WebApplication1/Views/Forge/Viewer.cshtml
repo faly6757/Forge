@@ -1,0 +1,146 @@
+﻿@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Forge Viewer - @ViewBag.DocumentName</title>
+    <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.min.css" />
+    <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #forgeViewer {
+            width: 100%;
+            height: 100%;
+        }
+
+        .viewer-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #333;
+            color: white;
+            padding: 10px;
+            z-index: 1000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+            .viewer-header h2 {
+                margin: 0;
+                font-size: 1.2em;
+            }
+
+        .close-button {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5em;
+            cursor: pointer;
+            padding: 5px 10px;
+        }
+
+        .viewer-container {
+            padding-top: 50px;
+            height: 100%;
+            display: flex;
+            flex-direction: row;
+        }
+
+        #observationsPanel {
+            width: 300px;
+            background-color: #f7f7f7;
+            padding: 10px;
+            overflow-y: scroll;
+            border-left: 1px solid #ccc;
+        }
+
+            #observationsPanel h3 {
+                font-size: 1.2em;
+            }
+    </style>
+</head>
+<body>
+    <div class="viewer-header">
+        <h2>@ViewBag.DocumentName</h2>
+        <button class="close-button" onclick="window.close()">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    <div class="viewer-container">
+        <div id="forgeViewer" style="flex: 1;"></div>
+        <div id="observationsPanel">
+            <h3>Observations</h3>
+            <ul id="observationsList"></ul>
+        </div>
+    </div>
+
+
+    <script>
+        // Fonction pour charger les observations depuis l'API
+        function loadObservations(documentId) {
+            $.ajax({
+                url: '/Forge/GetObservations',  // Appelle le contrôleur ForgeController
+                data: { documentId: documentId },
+                success: function (data) {
+                    console.log("Observations:", data);
+                    var $list = $('#observationsList');
+                    $list.empty();  // Vide la liste avant de la remplir
+
+                    if (data && data.length > 0) {
+                        // Remplir la liste avec les observations
+                        data.forEach(function (obs) {
+                            $list.append(
+                                '<li>' +
+                                    '<strong>' + obs.Titre + '</strong><br>' +
+                                    '<small class="text-muted">' + obs.Date + ' - ' + (obs.Lieu || 'Lieu inconnu') + '</small><br>' +
+                                    '<p>' + obs.Description + '</p>' +
+                                    '<span class="badge badge-warning">' + obs.Statut + '</span>' +
+                                '</li>'
+                            );
+                        });
+                    } else {
+                        $list.append('<li class="text-muted">Aucune observation.</li>');
+                    }
+                },
+                error: function () {
+                    alert("Erreur lors du chargement des observations");
+                }
+            });
+        }
+
+        var options = {
+            env: 'AutodeskProduction',
+            accessToken: '@ViewBag.AccessToken'
+        };
+
+        Autodesk.Viewing.Initializer(options, function () {
+            var viewer = new Autodesk.Viewing.GuiViewer3D(document.getElementById('forgeViewer'));
+            viewer.start();
+            var documentId = 'urn:@ViewBag.URN'; 
+
+            Autodesk.Viewing.Document.load(documentId, function (doc) {
+                var viewables = doc.getRoot().getDefaultGeometry();
+                viewer.loadDocumentNode(doc, viewables);
+
+                // Après le chargement du modèle, appeler la fonction pour charger les annotations
+                var realDocumentId = '@Request.QueryString["id"]';  // Id du document depuis l'URL
+                loadObservations(realDocumentId);
+            }, function (code, message, errors) {
+                alert('Erreur lors du chargement du modèle Forge : ' + message);
+            });
+        });
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,293 @@
+@model IEnumerable<WebApplication1.Models.Document>
+
+@{
+    ViewBag.Title = "Documents Forge";
+}
+
+<style>
+    #forgeViewer {
+        position: relative;
+        height: 100vh;
+        width: 100%;
+    }
+
+    .loading-spinner {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1000;
+        display: none;
+    }
+
+    .spinner-border {
+        width: 3rem;
+        height: 3rem;
+    }
+
+    .modal-fullscreen {
+        padding: 0 !important;
+    }
+
+    .modal-fullscreen .modal-dialog {
+        width: 100%;
+        max-width: none;
+        height: 100%;
+        margin: 0;
+    }
+
+    .modal-fullscreen .modal-content {
+        height: 100%;
+        border: 0;
+        border-radius: 0;
+    }
+
+    .modal-fullscreen .modal-body {
+        padding: 0;
+        overflow-y: auto;
+    }
+
+    .close-button {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background-color: #dc3545;
+        border: none;
+        color: white;
+        font-size: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        z-index: 1050;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+
+    .close-button:hover {
+        background-color: #c82333;
+    }
+</style>
+
+<div class="container mt-4">
+    <h2>Documents Forge</h2>
+    <p>
+        @Html.ActionLink("Uploader un nouveau document", "Upload", null, new { @class = "btn btn-primary" })
+    </p>
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Nom du fichier</th>
+                <th>Type</th>
+                <th>Date d'upload</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var doc in Model)
+            {
+                <tr>
+                    <td>@doc.Name</td>
+                    <td>@doc.FileType</td>
+                    <td>@doc.UploadDate.ToString("dd/MM/yyyy HH:mm")</td>
+                    <td>
+                        <button class="btn btn-info btn-sm" onclick="openViewer(1, '@doc. ')">
+                            <i class="fas fa-eye"></i> Ouvrir
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<!-- Modal pour le Forge Viewer -->
+<div class="modal fade modal-fullscreen" id="viewerModal" tabindex="-1" role="dialog" aria-labelledby="viewerModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-body p-0">
+                <button type="button" class="close-button" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+                <div class="container-fluid h-100">
+                    <div class="row h-100">
+                        <!-- Colonne gauche : Observations -->
+                        <div class="col-md-3 bg-light border-right p-3" style="overflow-y:auto; height:100vh;">
+                            <div class="list-group">
+                                
+                            </div>
+                        </div>
+                        <!-- Colonne droite : Forge Viewer -->
+                        <div class="col-md-9 p-0" style="position:relative;">
+                            <div id="forgeViewer" style="height:100vh;width:100%;">
+                                <div class="loading-spinner">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="sr-only"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js"></script>
+    <script>
+        var viewer;
+        var pdf2dPages = [];
+        var currentPageIndex = 0;
+
+        function showLoading() {
+            $('.loading-spinner').show();
+        }
+
+        function hideLoading() {
+            $('.loading-spinner').hide();
+        }
+
+        function openViewer(documentId, documentName) {
+            $('#viewerModal').modal('show');
+
+            // Lancer l'AJAX pour les observations en même temps que le viewer
+            $.get('/Forge/GetObservations', { documentId: documentId }, function(observations) {
+                var $list = $('.list-group');
+                $list.empty();
+                if (observations && observations.length > 0) {
+                    observations.forEach(function(obs) {
+                        $list.append(
+                            '<div class="list-group-item">' +
+                                '<b>' + obs.Titre + '</b>' +
+                                '<span class="float-right text-muted small">' + obs.Date + '</span>' +
+                                '<div>' + obs.Description + '</div>' +
+                                '<div class="text-muted small">' + obs.Lieu + '</div>' +
+                                '<span class="badge badge-warning">' + obs.Statut + '</span>' +
+                            '</div>'
+                        );
+                    });
+                } else {
+                    $list.append('<div class="list-group-item text-muted">Aucune observation</div>');
+                }
+            });
+
+            $('#viewerModal').off('shown.bs.modal').on('shown.bs.modal', function () {
+                if (viewer) {
+                    viewer.finish();
+                    viewer = null;
+                }
+
+                showLoading();
+
+                $.get('/Forge/GetViewerData/' + documentId, function (data) {
+                    var options = {
+                        env: 'AutodeskProduction',
+                        api: 'derivativeV2',
+                        getAccessToken: function (onTokenReady) {
+                            onTokenReady(data.accessToken, 3600);
+                        }
+                    };
+
+                    Autodesk.Viewing.Initializer(options, function () {
+                        viewer = new Autodesk.Viewing.GuiViewer3D(document.getElementById('forgeViewer'));
+                        viewer.start();
+
+                        viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, function () {
+                            hideLoading();
+                        });
+
+                        viewer.addEventListener(Autodesk.Viewing.ERROR_EVENT, function () {
+                            hideLoading();
+                            alert('Erreur lors du chargement du document');
+                        });
+
+                        Autodesk.Viewing.Document.load(data.urn, function (doc) {
+                            // Récupérer toutes les pages 2D
+                            pdf2dPages = [];
+                            doc.getRoot().search({'type':'geometry', 'role':'2d'}, function(node){
+                                pdf2dPages.push(node);
+                            }, true);
+
+                            // Charger la première page seulement
+                            currentPageIndex = 0;
+                            if (pdf2dPages.length > 0) {
+                                viewer.loadDocumentNode(doc, pdf2dPages[0]);
+                            } else {
+                                hideLoading();
+                                alert('Aucune page 2D trouvée dans ce PDF.');
+                            }
+
+                            // Ajouter les boutons de navigation si plusieurs pages
+                            addPdfNavigationToolbar();
+                        }, function (error) {
+                            hideLoading();
+                            alert('Erreur lors du chargement du document: ' + error);
+                        });
+                    });
+                }).fail(function () {
+                    hideLoading();
+                    alert('Erreur lors de la récupération des données du document');
+                });
+            });
+        }
+
+        // Ajoute les boutons Précédent/Suivant à la barre d'outils du viewer
+        function addPdfNavigationToolbar() {
+            if (!viewer) return;
+
+            // Supprimer les anciens boutons si déjà présents
+            if (viewer.pdfPrevBtn) viewer.toolbar.removeControl(viewer.pdfPrevBtn);
+            if (viewer.pdfNextBtn) viewer.toolbar.removeControl(viewer.pdfNextBtn);
+
+            // Bouton Précédent
+            viewer.pdfPrevBtn = new Autodesk.Viewing.UI.Button('pdf-prev-page');
+            viewer.pdfPrevBtn.setToolTip('Page précédente');
+            viewer.pdfPrevBtn.setIcon('adsk-icon-chevron-left');
+            viewer.pdfPrevBtn.onClick = function () {
+                if (currentPageIndex > 0) {
+                    currentPageIndex--;
+                    viewer.loadDocumentNode(viewer.model.getDocumentNode().getDocument(), pdf2dPages[currentPageIndex]);
+                }
+            };
+
+            // Bouton Suivant
+            viewer.pdfNextBtn = new Autodesk.Viewing.UI.Button('pdf-next-page');
+            viewer.pdfNextBtn.setToolTip('Page suivante');
+            viewer.pdfNextBtn.setIcon('adsk-icon-chevron-right');
+            viewer.pdfNextBtn.onClick = function () {
+                if (currentPageIndex < pdf2dPages.length - 1) {
+                    currentPageIndex++;
+                    viewer.loadDocumentNode(viewer.model.getDocumentNode().getDocument(), pdf2dPages[currentPageIndex]);
+                }
+            };
+
+            // Ajouter les boutons à la barre d'outils
+            viewer.toolbar.addControl(viewer.pdfPrevBtn);
+            viewer.toolbar.addControl(viewer.pdfNextBtn);
+        }
+
+        // Nettoyer le viewer quand le modal est fermé
+        $('#viewerModal').on('hidden.bs.modal', function () {
+            if (viewer) {
+                viewer.finish();
+                viewer = null;
+            }
+            hideLoading();
+        });
+
+        // Forcer la fermeture du modal avec le bouton rouge
+        $(document).on('click', '.close-button', function () {
+            $('#viewerModal').modal('hide');
+            if (viewer) {
+                viewer.finish();
+                viewer = null;
+            }
+            hideLoading();
+        });
+    </script>
+} 

@@ -1,0 +1,28 @@
+﻿@{
+    ViewBag.Title = "Upload Document";
+}
+
+<div class="container">
+    <h2>Uploader un document</h2>
+    
+    <div class="row">
+        <div class="col-md-6">
+            @using (Html.BeginForm("Upload", "Forge", FormMethod.Post, new { enctype = "multipart/form-data" }))
+            {
+                <div class="form-group">
+                    <label for="file">Sélectionner un fichier</label>
+                    <input type="file" name="file" id="file" class="form-control" accept="application/pdf" required />
+                    <small class="form-text text-muted">Seuls les fichiers PDF sont acceptés pour la visualisation Forge.</small>
+                </div>
+                <div class="form-group mt-3">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-upload"></i> Uploader
+                    </button>
+                    <a href="@Url.Action("Index")" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left"></i> Retour à la liste
+                    </a>
+                </div>
+            }
+        </div>
+    </div>
+</div>
